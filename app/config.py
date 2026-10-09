@@ -15,7 +15,7 @@ load_dotenv()
 class Settings:
     groq_api_key: str | None = None
     llm_model: str = "openai/gpt-oss-120b"
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     chunk_size: int = 500
     chunk_overlap: int = 50
     top_k: int = 3

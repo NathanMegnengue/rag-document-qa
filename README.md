@@ -1,14 +1,15 @@
 # RAG Document QA
 
 A small REST API to ask questions about PDF documents. You upload a PDF, get a document id, and
-ask questions about that document. Every answer comes with the pages it was based on.
+ask questions about that document. Every answer comes with the pages it was based on, and when the
+document does not contain the answer the API says so instead of guessing.
 
-Built with FastAPI, LangChain, FAISS, `sentence-transformers` embeddings and LLaMA 3.3 70B
-(through the Groq API).
+Built with FastAPI, LangChain, FAISS, `sentence-transformers` embeddings and an open-weight LLM
+(`openai/gpt-oss-120b` by default, through the Groq API).
 
-> **Status: a tested prototype.** The API is isolated per document, validates uploads and has
-> automated tests and CI. It is **not** a hardened production service: see
-> [Limitations](#limitations).
+> **Status: a tested and evaluated prototype.** The API is isolated per document, validates
+> uploads, has automated tests, CI, and a small evaluation harness. It is **not** a hardened
+> production service: see [Limitations](#limitations).
 
 ## How it works
 
@@ -17,17 +18,20 @@ POST /documents  (PDF)
    -> check it is a PDF and under the size limit
    -> extract text per page (pypdf)
    -> split into chunks (500 characters, 50 overlap)
-   -> embed with all-MiniLM-L6-v2 -> one FAISS index per document
+   -> embed with paraphrase-multilingual-MiniLM-L12-v2 -> one FAISS index per document
 
 POST /documents/{id}/ask  {"question": "..."}
    -> retrieve the 3 closest chunks of that document
-   -> prompt LLaMA 3.3 with the chunks, told to answer only from them
-   -> return the answer + the pages and excerpts used
+   -> prompt the LLM with the numbered chunks; it must answer only from them,
+      in the language of the question
+   -> the model reports which chunks it used (or NOT_FOUND)
+   -> return the answer, a `found` flag, and only the pages/excerpts the model used
 ```
 
-If the answer is not in the retrieved text, the model is instructed to reply
-`I could not find this in the document.` This is a prompt instruction, not a guarantee: the
-quality of the answers has not been measured yet (see the roadmap).
+If the answer is not in the retrieved text, the model is instructed to answer `NOT_FOUND`; the API
+then returns `"found": false` with a short explanation in the question's language and no sources.
+These are prompt instructions, not guarantees: see the [evaluation](#evaluation) for measured
+behaviour.
 
 ## Quick start
 
@@ -61,7 +65,10 @@ curl -X POST http://127.0.0.1:8000/documents -F "file=@report.pdf"
 curl -X POST http://127.0.0.1:8000/documents/3f2a.../ask \
   -H "Content-Type: application/json" \
   -d '{"question": "What are the main conclusions?"}'
-# {"answer":"...","sources":[{"page":4,"excerpt":"..."}, ...]}
+# {"answer":"...","found":true,"sources":[{"page":4,"excerpt":"..."}]}
+
+# A question the document cannot answer
+# {"answer":"The document does not contain this information.","found":false,"sources":[]}
 ```
 
 | Endpoint | Purpose | Errors |
@@ -69,8 +76,10 @@ curl -X POST http://127.0.0.1:8000/documents/3f2a.../ask \
 | `GET /health` | liveness check | |
 | `POST /documents` | upload and index a PDF | 400 not a PDF, 413 too large, 422 unreadable or no text |
 | `GET /documents` | list indexed documents | |
-| `POST /documents/{id}/ask` | ask a question | 404 unknown id, 422 empty question, 502 LLM failure |
+| `POST /documents/{id}/ask` | ask a question | 404 unknown id, 422 empty question, 429 provider rate limit, 502 provider error, 503 provider unreachable |
 | `DELETE /documents/{id}` | remove a document | 404 unknown id |
+
+Provider errors are reported with a short, safe message; the full exception goes to the server log.
 
 ## Configuration
 
@@ -83,7 +92,7 @@ Environment variables (or `.env`, see `.env.example`):
 | `ALLOWED_ORIGINS` | empty | comma-separated CORS origins; empty means CORS disabled |
 | `MAX_UPLOAD_MB` | 20 | upload size limit |
 | `MAX_DOCUMENTS` | 20 | documents kept in memory; the oldest is evicted beyond this |
-| `LLM_MODEL`, `EMBEDDING_MODEL` | LLaMA 3.3 70B, all-MiniLM-L6-v2 | models used |
+| `LLM_MODEL`, `EMBEDDING_MODEL` | `openai/gpt-oss-120b`, `paraphrase-multilingual-MiniLM-L12-v2` | models used |
 | `CHUNK_SIZE`, `CHUNK_OVERLAP`, `TOP_K` | 500, 50, 3 | retrieval settings |
 
 ## Tests and CI
@@ -93,16 +102,63 @@ pip install -r requirements-dev.txt
 ruff check . && ruff format --check . && pytest
 ```
 
-The tests use a fake LLM and fake embeddings, so they run in under a second with no API key and
-no model download. They cover document isolation, upload validation (type, size, corrupt files,
-hostile file names), temp-file cleanup, error codes, the eviction limit and the API key. They do
-not test answer quality. GitHub Actions runs the same checks on every push.
+The tests use a fake LLM and fake embeddings, so they run in seconds with no API key and no model
+download. They cover document isolation, upload validation (type, size, corrupt files, hostile
+file names), temp-file cleanup, error codes (including provider failures), parsing of the model
+output, the eviction limit, the API key, and the evaluation dataset itself. They do not test the
+quality of real answers: that is the job of the evaluation below. GitHub Actions runs the same
+checks on every push.
+
+## Evaluation
+
+`evaluation/` contains a fictional 8-page employee handbook (`handbook.pdf`, generated by
+`make_handbook.py`, so it is free of any copyright) and 21 questions in French and English:
+17 whose answer is in the document and 4 whose answer is not. `questions.json` lists the expected
+page and the expected facts for each.
+
+```bash
+python -m evaluation.run                    # needs GROQ_API_KEY and downloads the embedding model
+python -m evaluation.run --retrieval-only   # no LLM call: only checks the right pages are found
+```
+
+It reports six numbers: retrieval hit rate (does a retrieved chunk actually contain the sentence
+with the answer), page hit rate (looser: a retrieved chunk is on the right page), answer accuracy,
+false refusals, correct refusals, and source precision (are the cited pages the right ones). The
+page-level number is kept because it overstates retrieval: a chunk from the right page can miss the
+fact. The latest run is saved in [evaluation/RESULTS.md](evaluation/RESULTS.md), and the English-only
+default I compared against in [evaluation/RESULTS-minilm.md](evaluation/RESULTS-minilm.md)
+(`--embedding-model sentence-transformers/all-MiniLM-L6-v2`).
+
+Read these numbers with care: the sample is small, the document is short and artificial, and
+answer accuracy is checked with regular expressions, so a correct answer worded in an unexpected
+way counts as a miss.
+
+### Results
+
+Measured on the 21 questions (17 answerable) with `openai/gpt-oss-120b`, chunks of 500/50, top 3:
+
+| | all-MiniLM-L6-v2 | paraphrase-multilingual-MiniLM-L12-v2 (default) |
+|---|---|---|
+| Retrieval hit rate (chunk contains the evidence) | 71% | 88% |
+| Page hit rate (looser) | 71% | 94% |
+| Answer accuracy | 71% | 88% |
+| False refusals | 29% | 12% |
+| Correct refusals | 100% | 100% |
+| Source precision | 100% | 100% |
+
+- The multilingual model is the default: it answers 15 of 17 questions against 12, and the whole
+  gain is on the French questions (6/7 against 3/7). English is 9/10 for both.
+- With the multilingual model, every wrong answer comes from retrieval, not from the LLM: when the
+  right chunk is retrieved the answer is right. In the two misses the model refused rather than
+  invent an answer, and no wrong source was cited.
+- Retrieving 5 chunks instead of 3 gave identical results, so the default stays at 3.
+- 17 answerable questions on one short fictional document: indicative only.
 
 ## Limitations
 
 - **Indexes live in memory.** Restarting the server loses them. Persisting FAISS to disk is next.
 - **Text PDFs only.** Scanned documents without a text layer are rejected (no OCR).
-- **Not evaluated.** There is no measurement yet of retrieval or answer quality.
+- **Small evaluation.** One short fictional document; no evaluation on long, real-world PDFs yet.
 - **Basic protection only.** One optional shared API key, no per-user accounts, no rate limiting.
 - **Single process.** The in-memory store is not shared between workers or machines.
 - `langchain-community` (used for the FAISS wrapper) is being sunset upstream; the vector store
@@ -110,7 +166,8 @@ not test answer quality. GitHub Actions runs the same checks on every push.
 
 ## Roadmap
 
-1. Evaluation set: questions with expected answers on sample PDFs, with the results published here.
+1. Try retrieval-oriented multilingual embeddings and a re-ranking step (some facts are still
+   missed at top 3).
 2. Persist indexes to disk and reload them at startup.
 3. Streaming answers and conversation history.
 
