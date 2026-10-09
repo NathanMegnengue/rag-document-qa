@@ -6,6 +6,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 *.pdf
+# ...except the fictional evaluation document, which is safe to publish
+!evaluation/handbook.pdf
+samples_local/
 temp_*
 .vscode/
 .DS_Store
