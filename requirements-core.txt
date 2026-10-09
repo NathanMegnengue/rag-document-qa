@@ -1,0 +1,10 @@
+# Runtime dependencies needed by the API and the tests (no heavy ML packages).
+fastapi==0.142.4
+uvicorn==0.54.0
+python-multipart==0.0.32
+pypdf==6.19.0
+langchain-core==1.6.7
+langchain-community==0.4.2
+langchain-text-splitters==1.1.3
+faiss-cpu==1.15.1
+python-dotenv==1.2.4
