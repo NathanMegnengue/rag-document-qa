@@ -15,9 +15,10 @@ from pydantic import BaseModel, Field
 from app.config import Settings, get_settings
 from app.rag import DocumentNotFound, InvalidDocument, RagService, build_service
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rag")
 
-app = FastAPI(title="RAG Document QA API", version="0.2.0")
+app = FastAPI(title="RAG Document QA API", version="0.3.0")
 
 _settings = get_settings()
 if _settings.allowed_origins:
@@ -41,6 +42,7 @@ class SourceOut(BaseModel):
 
 class AnswerOut(BaseModel):
     answer: str
+    found: bool  # False when the document does not contain the answer (sources is then empty)
     sources: list[SourceOut]
 
 
@@ -70,6 +72,26 @@ def get_service(settings: Settings = Depends(get_settings)) -> RagService:
         return _build(settings)
     except RuntimeError as exc:  # e.g. missing GROQ_API_KEY
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def llm_http_error(exc: Exception) -> HTTPException:
+    """Turn a failure of the LLM call into a precise HTTP error, without leaking internals.
+
+    The full exception is logged by the caller; the client only gets a short, safe message.
+    """
+    status = getattr(exc, "status_code", None)  # set by the Groq / OpenAI SDK errors
+    name = type(exc).__name__
+    if status == 429:
+        return HTTPException(429, "The language model provider rate limit was reached. Retry soon.")
+    if status in (401, 403):
+        return HTTPException(502, "The language model provider rejected our credentials.")
+    if status in (400, 404):
+        return HTTPException(
+            502, "The language model provider rejected the request (is the model still available?)."
+        )
+    if isinstance(exc, ConnectionError | TimeoutError) or "Connection" in name or "Timeout" in name:
+        return HTTPException(503, "Could not reach the language model provider.")
+    return HTTPException(502, "The language model request failed.")
 
 
 # ---------- routes ----------
@@ -131,9 +153,10 @@ def ask(
         raise HTTPException(status_code=404, detail="Unknown document id.") from exc
     except Exception as exc:
         logger.exception("LLM or retrieval failure")
-        raise HTTPException(status_code=502, detail="The language model request failed.") from exc
+        raise llm_http_error(exc) from exc
     return AnswerOut(
         answer=result.answer,
+        found=result.found,
         sources=[SourceOut(page=s.page, excerpt=s.excerpt) for s in result.sources],
     )
 

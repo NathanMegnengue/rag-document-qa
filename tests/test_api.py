@@ -1,5 +1,9 @@
 import os
 
+import pytest
+from langchain_core.language_models.fake_chat_models import FakeListChatModel
+from langchain_core.runnables import RunnableLambda
+
 from tests.conftest import make_pdf
 
 
@@ -27,6 +31,7 @@ def test_ask_returns_answer_and_sources_with_page_numbers(client):
     assert r.status_code == 200
     body = r.json()
     assert body["answer"] == "The answer is 42."
+    assert body["found"] is True
     assert {s["page"] for s in body["sources"]} == {1, 2}
     assert all("Alpha" in s["excerpt"] for s in body["sources"])
 
@@ -99,3 +104,57 @@ def test_api_key_is_enforced_when_configured(make_client):
     assert client.get("/documents").status_code == 401
     assert client.get("/documents", headers={"X-API-Key": "wrong"}).status_code == 401
     assert client.get("/documents", headers={"X-API-Key": "secret"}).status_code == 200
+
+
+class FakeProviderError(Exception):
+    """Mimics the SDK errors of an LLM provider, which carry an HTTP status code."""
+
+    def __init__(self, status_code=None):
+        super().__init__("secret provider details")
+        self.status_code = status_code
+
+
+def failing_llm(exc: Exception):
+    def _raise(_):
+        raise exc
+
+    return RunnableLambda(_raise)
+
+
+def ask_once(client):
+    doc = upload(client, ["Alpha page one", "Alpha page two", "Alpha page three"]).json()
+    return client.post(f"/documents/{doc['id']}/ask", json={"question": "q"})
+
+
+def test_only_the_sources_the_model_used_are_returned(make_client):
+    llm = FakeListChatModel(responses=["It is beta.\nUSED: 2"])
+    r = ask_once(make_client(llm=llm))
+    body = r.json()
+    assert r.status_code == 200
+    assert body["answer"] == "It is beta."
+    assert body["found"] is True
+    assert len(body["sources"]) == 1
+
+
+def test_not_found_has_no_sources_and_keeps_the_language(make_client):
+    llm = FakeListChatModel(responses=["NOT_FOUND\nLe document ne contient pas cette information."])
+    body = ask_once(make_client(llm=llm)).json()
+    assert body["found"] is False
+    assert body["sources"] == []
+    assert body["answer"] == "Le document ne contient pas cette information."
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status"),
+    [
+        (FakeProviderError(429), 429),
+        (FakeProviderError(401), 502),
+        (FakeProviderError(404), 502),
+        (ConnectionError("no route"), 503),
+        (ValueError("bug"), 502),
+    ],
+)
+def test_llm_failures_map_to_precise_http_errors(make_client, error, expected_status):
+    r = ask_once(make_client(llm=failing_llm(error)))
+    assert r.status_code == expected_status
+    assert "secret" not in r.text and "no route" not in r.text  # internals are never leaked

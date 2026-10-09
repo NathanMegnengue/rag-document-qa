@@ -54,11 +54,11 @@ def settings(tmp_path) -> Settings:
 
 @pytest.fixture
 def make_client(settings):
-    def _make(**overrides) -> TestClient:
+    def _make(llm=None, **overrides) -> TestClient:
         s = dataclasses.replace(settings, **overrides)
         service = RagService(
             embeddings=DeterministicFakeEmbedding(size=32),
-            llm=FakeListChatModel(responses=["The answer is 42."]),
+            llm=llm or FakeListChatModel(responses=["The answer is 42."]),
             settings=s,
         )
         app.dependency_overrides[get_settings] = lambda: s

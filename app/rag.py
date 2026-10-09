@@ -1,7 +1,12 @@
-"""RAG service: one FAISS index per uploaded document, answers come with their sources."""
+"""RAG service: one FAISS index per uploaded document.
+
+Answers come with the sources the model says it used. When the document does not contain the
+answer, the model says so in the language of the question and no sources are returned.
+"""
 
 from __future__ import annotations
 
+import re
 import threading
 import uuid
 from collections import OrderedDict
@@ -16,17 +21,24 @@ from pypdf import PdfReader
 
 from app.config import Settings
 
+# Used when the model refuses without giving an explanation.
 NOT_FOUND_ANSWER = "I could not find this in the document."
 
-PROMPT = f"""You answer questions about a single PDF document.
-Use ONLY the context below. If the context does not contain the answer, reply exactly:
-"{NOT_FOUND_ANSWER}"
-Do not use outside knowledge.
+PROMPT = """You answer questions about a single PDF document.
+Use ONLY the numbered passages below. Do not use outside knowledge.
+Answer in the same language as the question.
 
-Context:
-{{context}}
+If the passages do not contain the answer, write the single word NOT_FOUND on the first line, then
+one short sentence, in the language of the question, saying that the document does not contain
+this information. Add nothing else.
 
-Question: {{question}}"""
+Otherwise, answer the question. Then, on a new final line, write USED: followed by the numbers of
+the passages you actually relied on, separated by commas (for example: USED: 1,3).
+
+Passages:
+{context}
+
+Question: {question}"""
 
 
 class DocumentNotFound(Exception):
@@ -54,13 +66,44 @@ class DocumentInfo:
 @dataclass(frozen=True)
 class Answer:
     answer: str
+    found: bool
     sources: list[Source]
+
+
+@dataclass(frozen=True)
+class ParsedOutput:
+    found: bool
+    text: str
+    used: list[int] | None  # 1-based passage numbers; None = the model did not say
 
 
 @dataclass
 class _Indexed:
     info: DocumentInfo
     store: FAISS
+
+
+_NOT_FOUND_RE = re.compile(r"^\W*NOT_FOUND\b[\s:.\-–—*]*", re.IGNORECASE)
+_USED_RE = re.compile(r"(?:^|\n)[ \t*]*USED[ \t*]*:[ \t]*([^\n]*?)[ \t*]*\s*$", re.IGNORECASE)
+
+
+def parse_model_output(raw: str, n_passages: int) -> ParsedOutput:
+    """Split the model's raw text into: found or not, the answer, and the passages it used."""
+    text = raw.strip()
+    marker = _NOT_FOUND_RE.match(text)
+    if marker or text.lower().rstrip(".") == NOT_FOUND_ANSWER.lower().rstrip("."):
+        explanation = text[marker.end() :].strip() if marker else ""
+        return ParsedOutput(found=False, text=explanation or NOT_FOUND_ANSWER, used=[])
+
+    used = None
+    tail = _USED_RE.search(text)
+    if tail:
+        text = text[: tail.start()].rstrip()
+        numbers = {int(n) for n in re.findall(r"\d+", tail.group(1))}
+        used = sorted(n for n in numbers if 1 <= n <= n_passages) or None
+    if not text:
+        return ParsedOutput(found=False, text=NOT_FOUND_ANSWER, used=[])
+    return ParsedOutput(found=True, text=text, used=used)
 
 
 class RagService:
@@ -100,18 +143,31 @@ class RagService:
                 self._docs.popitem(last=False)  # evict the oldest document
         return info
 
-    def ask(self, doc_id: str, question: str) -> Answer:
+    def retrieve(self, doc_id: str, question: str) -> list[Document]:
+        """The `top_k` chunks of this document closest to the question (no LLM call)."""
         with self._lock:
             item = self._docs.get(doc_id)
             if item is None:
                 raise DocumentNotFound(doc_id)
             self._docs.move_to_end(doc_id)
+        return item.store.similarity_search(question, k=self._settings.top_k)
 
-        hits = item.store.similarity_search(question, k=self._settings.top_k)
-        context = "\n\n".join(f"[page {_page(d)}] {d.page_content}" for d in hits)
-        answer = self._chain.invoke({"context": context, "question": question})
-        sources = [Source(page=_page(d), excerpt=d.page_content[:200]) for d in hits]
-        return Answer(answer=answer.strip(), sources=sources)
+    def ask(self, doc_id: str, question: str) -> Answer:
+        hits = self.retrieve(doc_id, question)
+        context = "\n\n".join(
+            f"[{i}] (page {page_of(d)}) {d.page_content}" for i, d in enumerate(hits, start=1)
+        )
+        raw = self._chain.invoke({"context": context, "question": question})
+        parsed = parse_model_output(raw, len(hits))
+
+        if not parsed.found:
+            chosen: list[Document] = []
+        elif parsed.used is None:
+            chosen = hits  # the model did not say which passages it used: show them all
+        else:
+            chosen = [hits[n - 1] for n in parsed.used]
+        sources = [Source(page=page_of(d), excerpt=d.page_content[:200]) for d in chosen]
+        return Answer(answer=parsed.text, found=parsed.found, sources=sources)
 
     def list_documents(self) -> list[DocumentInfo]:
         with self._lock:
@@ -123,7 +179,8 @@ class RagService:
                 raise DocumentNotFound(doc_id)
 
 
-def _page(doc) -> int:
+def page_of(doc: Document) -> int:
+    """1-based page number of a chunk."""
     return int(doc.metadata.get("page", 0)) + 1
 
 
