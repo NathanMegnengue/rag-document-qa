@@ -1,0 +1,5 @@
+# Used by CI: tests run with fake models, so no torch / sentence-transformers download.
+-r requirements-core.txt
+pytest==9.1.1
+httpx==0.28.1
+ruff==0.16.10

@@ -1,0 +1,262 @@
+[
+  {
+    "id": "q01",
+    "lang": "en",
+    "question": "In which city is Bluefern Robotics headquartered?",
+    "answerable": true,
+    "expected_pages": [
+      1
+    ],
+    "expected_regex": [
+      "Lyon"
+    ],
+    "evidence": "headquarters are in Lyon"
+  },
+  {
+    "id": "q02",
+    "lang": "fr",
+    "question": "Combien d'employés compte l'entreprise ?",
+    "answerable": true,
+    "expected_pages": [
+      1
+    ],
+    "expected_regex": [
+      "\\b240\\b"
+    ],
+    "evidence": "employs 240 people"
+  },
+  {
+    "id": "q03",
+    "lang": "en",
+    "question": "What are the core working hours?",
+    "answerable": true,
+    "expected_pages": [
+      2
+    ],
+    "expected_regex": [
+      "\\b10\\b",
+      "\\b16\\b"
+    ],
+    "evidence": "from 10:00 to 16:00"
+  },
+  {
+    "id": "q04",
+    "lang": "fr",
+    "question": "Combien de jours de télétravail par semaine sont autorisés ?",
+    "answerable": true,
+    "expected_pages": [
+      2
+    ],
+    "expected_regex": [
+      "\\b(3|three|trois)\\b"
+    ],
+    "evidence": "up to 3 days per week"
+  },
+  {
+    "id": "q05",
+    "lang": "en",
+    "question": "In which months do Fridays end earlier, and at what time?",
+    "answerable": true,
+    "expected_pages": [
+      2
+    ],
+    "expected_regex": [
+      "July|juillet",
+      "\\b15\\b"
+    ],
+    "evidence": "In July and August, Fridays end earlier"
+  },
+  {
+    "id": "q06",
+    "lang": "en",
+    "question": "How many days of paid annual leave do employees get?",
+    "answerable": true,
+    "expected_pages": [
+      3
+    ],
+    "expected_regex": [
+      "\\b27\\b"
+    ],
+    "evidence": "27 days of paid annual leave"
+  },
+  {
+    "id": "q07",
+    "lang": "fr",
+    "question": "Après combien d'années de service obtient-on des jours de congé supplémentaires ?",
+    "answerable": true,
+    "expected_pages": [
+      3
+    ],
+    "expected_regex": [
+      "\\b(5|five|cinq)\\b"
+    ],
+    "evidence": "After 5 years of service"
+  },
+  {
+    "id": "q08",
+    "lang": "en",
+    "question": "After how many consecutive days of sick leave is a medical certificate required?",
+    "answerable": true,
+    "expected_pages": [
+      3
+    ],
+    "expected_regex": [
+      "\\b(3|three)\\b"
+    ],
+    "evidence": "after 3 consecutive days"
+  },
+  {
+    "id": "q09",
+    "lang": "fr",
+    "question": "Quel est le plafond de remboursement d'une nuit d'hôtel en Europe ?",
+    "answerable": true,
+    "expected_pages": [
+      4
+    ],
+    "expected_regex": [
+      "\\b140\\b"
+    ],
+    "evidence": "140 euros per night in Europe"
+  },
+  {
+    "id": "q10",
+    "lang": "en",
+    "question": "What is the daily meal allowance on business trips?",
+    "answerable": true,
+    "expected_pages": [
+      4
+    ],
+    "expected_regex": [
+      "\\b18\\b"
+    ],
+    "evidence": "meal allowance is 18 euros"
+  },
+  {
+    "id": "q11",
+    "lang": "en",
+    "question": "How long do employees have to submit an expense report?",
+    "answerable": true,
+    "expected_pages": [
+      4
+    ],
+    "expected_regex": [
+      "\\b30\\b"
+    ],
+    "evidence": "within 30 days after the trip"
+  },
+  {
+    "id": "q12",
+    "lang": "fr",
+    "question": "Combien de caractères un mot de passe doit-il contenir au minimum ?",
+    "answerable": true,
+    "expected_pages": [
+      5
+    ],
+    "expected_regex": [
+      "\\b14\\b"
+    ],
+    "evidence": "at least 14 characters"
+  },
+  {
+    "id": "q13",
+    "lang": "en",
+    "question": "Within what time must a phishing email be reported, and to which address?",
+    "answerable": true,
+    "expected_pages": [
+      5
+    ],
+    "expected_regex": [
+      "security@bluefern\\.example",
+      "\\b(1|one)\\b"
+    ],
+    "evidence": "within 1 hour to security@bluefern.example"
+  },
+  {
+    "id": "q14",
+    "lang": "en",
+    "question": "What is the annual learning budget per employee?",
+    "answerable": true,
+    "expected_pages": [
+      6
+    ],
+    "expected_regex": [
+      "1[,.   ]?500"
+    ],
+    "evidence": "learning budget of 1,500 euros"
+  },
+  {
+    "id": "q15",
+    "lang": "fr",
+    "question": "Combien de temps dure le programme de mentorat ?",
+    "answerable": true,
+    "expected_pages": [
+      6
+    ],
+    "expected_regex": [
+      "\\b(6|six)\\b"
+    ],
+    "evidence": "mentorship programme lasts 6 months"
+  },
+  {
+    "id": "q16",
+    "lang": "en",
+    "question": "From what value must gifts be declared?",
+    "answerable": true,
+    "expected_pages": [
+      7
+    ],
+    "expected_regex": [
+      "\\b50\\b"
+    ],
+    "evidence": "Gifts worth more than 50 euros"
+  },
+  {
+    "id": "q17",
+    "lang": "fr",
+    "question": "Quel est le délai de préavis d'un ingénieur après la période d'essai ?",
+    "answerable": true,
+    "expected_pages": [
+      8
+    ],
+    "expected_regex": [
+      "\\b(2|two|deux)\\b"
+    ],
+    "evidence": "notice period for engineers is 2 months"
+  },
+  {
+    "id": "q18",
+    "lang": "en",
+    "question": "What is the CEO's salary?",
+    "answerable": false,
+    "expected_pages": [],
+    "expected_regex": [],
+    "evidence": ""
+  },
+  {
+    "id": "q19",
+    "lang": "fr",
+    "question": "Quelle est la politique de l'entreprise sur les animaux de compagnie au bureau ?",
+    "answerable": false,
+    "expected_pages": [],
+    "expected_regex": [],
+    "evidence": ""
+  },
+  {
+    "id": "q20",
+    "lang": "en",
+    "question": "Does the company offer stock options to its employees?",
+    "answerable": false,
+    "expected_pages": [],
+    "expected_regex": [],
+    "evidence": ""
+  },
+  {
+    "id": "q21",
+    "lang": "fr",
+    "question": "Quelle est la capitale du Japon ?",
+    "answerable": false,
+    "expected_pages": [],
+    "expected_regex": [],
+    "evidence": ""
+  }
+]

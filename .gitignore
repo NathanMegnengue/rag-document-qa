@@ -1,21 +1,15 @@
-# Virtual environment
 venv/
-
-# Environment variables
+.venv/
 .env
-
-# Python cache
 __pycache__/
 *.pyc
-*.pyo
-
-# Temporary files
+.pytest_cache/
+.ruff_cache/
 *.pdf
+# ...except the fictional evaluation document, which is safe to publish
+!evaluation/handbook.pdf
+samples_local/
 temp_*
-
-# VS Code
 .vscode/
-
-# OS
 .DS_Store
 Thumbs.db
